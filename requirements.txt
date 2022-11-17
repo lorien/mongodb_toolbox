@@ -1,0 +1,22 @@
+# Code Quality
+bandit
+flake8
+flake8-broken-line
+flake8-bugbear
+flake8-commas
+flake8-comprehensions
+flake8-debugger
+flake8-docstrings
+flake8-expression-complexity
+flake8-isort
+flake8-pep585
+flake8-pie
+flake8-quotes
+flake8-return
+flake8-simplify
+flake8-string-format
+mccabe
+mypy
+pep8-naming
+pylint
+pytype
