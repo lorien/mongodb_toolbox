@@ -1,6 +1,6 @@
 .PHONY: bootstrap venv deps clean init runscript mypy pytype pylint flake8 bandit
 
-FILES_FOR_CHECK = mongodb_tools
+FILES_FOR_CHECK = mongodb_tools setup.py
 
 bootstrap: venv deps dirs
 
@@ -28,7 +28,7 @@ pylint:
 	pylint -j0 $(FILES_FOR_CHECK)
 
 flake8:
-	flake8 -j auto --max-cognitive-complexity=7 $(FILES_FOR_CHECK)
+	flake8 -j auto $(FILES_FOR_CHECK)
 
 bandit:
 	bandit -qc pyproject.toml -r $(FILES_FOR_CHECK)

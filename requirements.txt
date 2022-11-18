@@ -1,3 +1,11 @@
+# Package
+bumpversion
+procstat
+
+# Types Stubs
+types-setuptools
+types-cryptography
+
 # Code Quality
 bandit
 flake8

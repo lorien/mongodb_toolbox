@@ -1,27 +1,34 @@
-from typing import Any, Union, Optional, Iterable
 import logging
-from pprint import pprint, pformat # pylint: disable=unused-import
 import time
+from collections.abc import Iterable
 from copy import deepcopy
+from pprint import pformat, pprint  # pylint: disable=unused-import
+from typing import Any, Optional, Union, cast
 
-from pymongo.results import BulkWriteResult
-from pymongo.database import Database
-from pymongo import UpdateOne, InsertOne, DeleteOne
-from pymongo.errors import BulkWriteError
+from bson.raw_bson import RawBSONDocument
 from procstat import Stat
+from pymongo import DeleteOne, InsertOne, UpdateOne
+from pymongo.database import Database
+from pymongo.errors import BulkWriteError
+from pymongo.results import BulkWriteResult
 
 DatabaseOperation = Union[UpdateOne, InsertOne, DeleteOne]
 
 
 __all__ = ["bulk_write", "iterate_collection", "bulk_dup_insert", "bulk_simple_insert"]
 
+
 def bulk_write(
-        db: Database[Any], item_type: str, ops: list[DatabaseOperation],
-        stat: Optional[Stat]=None, retries: int=3, log_first_failop: bool=True
-    ) -> BulkWriteResult:
+    db: Database[RawBSONDocument],
+    item_type: str,
+    ops: list[DatabaseOperation],
+    stat: Optional[Stat] = None,
+    retries: int = 3,
+    log_first_failop: bool = True,
+) -> BulkWriteResult:
     """
-    Tries to apply `ops` Update operations to `item_type`
-    collection with `bulk_write` method.
+    Apply `ops` Update operations to `item_type` collection with `bulk_write` method.
+
     Gives up if `retries` retries failed.
 
     Args:
@@ -32,7 +39,7 @@ def bulk_write(
         retries - number of retries
     """
     if stat:
-        stat.inc('bulk-write-%s' % item_type)
+        stat.inc("bulk-write-%s" % item_type)
     bulk_res = None
     for retry in range(retries):
         try:
@@ -43,30 +50,34 @@ def bulk_write(
             if retry == (retries - 1):
                 if log_first_failop:
                     logging.error(
-                        'First failed operation:\n%s',
-                        pformat(ex.details['writeErrors'][0])
+                        "First failed operation:\n%s",
+                        pformat(ex.details["writeErrors"][0]),
                     )
                 raise
             if stat:
-                stat.inc('bulk-write-%s-retry' % item_type)
+                stat.inc("bulk-write-%s-retry" % item_type)
         else:
             if stat:
                 stat.inc(
-                    'bulk-write-%s-upsert' % item_type,
-                    bulk_res.bulk_api_result['nUpserted']
+                    "bulk-write-%s-upsert" % item_type,
+                    bulk_res.bulk_api_result["nUpserted"],
                 )
                 stat.inc(
-                    'bulk-write-%s-change' % item_type,
-                    bulk_res.bulk_api_result['nModified']
+                    "bulk-write-%s-change" % item_type,
+                    bulk_res.bulk_api_result["nModified"],
                 )
-    return bulk_res
+    return cast(BulkWriteResult, bulk_res)
 
 
 class BulkWriter:
     def __init__(
-            self, db: Database[Any], item_type: str, bulk_size: int=100,
-            stat: Optional[Stat]=None, retries: int=3
-        ) -> None:
+        self,
+        db: Database[RawBSONDocument],
+        item_type: str,
+        bulk_size: int = 100,
+        stat: Optional[Stat] = None,
+        retries: int = 3,
+    ) -> None:
         self.db = db
         self.item_type = item_type
         self.stat = stat
@@ -77,7 +88,7 @@ class BulkWriter:
     def _write_ops(self) -> BulkWriteResult:
         res = bulk_write(self.db, self.item_type, self.ops, self.stat)
         self.ops = []
-        return res
+        return res  # noqa: R504
 
     def update_one(self, *args: Any, **kwargs: Any) -> Optional[BulkWriteResult]:
         self.ops.append(UpdateOne(*args, **kwargs))
@@ -98,34 +109,39 @@ class BulkWriter:
 
 
 def iterate_collection(
-        db: Database[Any], item_type: str, query: dict[str, Any], sort_field: str,
-        iter_chunk: int=1000, fields: Optional[dict[str, int]]=None,
-        infinite: bool=False, limit: Optional[int]=None, recent_id: Optional[int]=None
-    ) -> Iterable[Any]:
+    db: Database[RawBSONDocument],
+    item_type: str,
+    query: dict[str, Any],
+    sort_field: str,
+    iter_chunk: int = 1000,
+    fields: Optional[dict[str, int]] = None,
+    infinite: bool = False,
+    limit: Optional[int] = None,
+    recent_id: Optional[int] = None,
+) -> Iterable[Any]:
     """
-    Iterate over `db[item_type]` collection items matching `query`
-    sorted by `sort_field`.
+    Iterate items in a collection, extracting them by chunks.
 
     Intenally, it fetches chunk of `iter_chunk` items at once and
     iterates over it. Then fetch next chunk.
     """
     count = 0
-    query = deepcopy(query) # avoid side effects
+    query = deepcopy(query)  # avoid side effects
     if sort_field in query:
         raise Exception(
-            'Function `iterate_collection` received query'
-            ' that contains a key same as `sort_field`.'
+            "Function `iterate_collection` received query"
+            " that contains a key same as `sort_field`."
         )
     while True:
         if recent_id:
-            query[sort_field] = {'$gt': recent_id}
-        items = list(db[item_type].find(
-            query, fields, sort=[(sort_field, 1)], limit=iter_chunk
-        ))
+            query[sort_field] = {"$gt": recent_id}
+        items = list(
+            db[item_type].find(query, fields, sort=[(sort_field, 1)], limit=iter_chunk)
+        )
         if not items:
             if infinite:
                 sleep_time = 5
-                logging.debug('No items to process. Sleeping %d seconds', sleep_time)
+                logging.debug("No items to process. Sleeping %d seconds", sleep_time)
                 time.sleep(sleep_time)
                 recent_id = None
             else:
@@ -140,32 +156,37 @@ def iterate_collection(
 
 
 def bulk_dup_insert(
-        db: Database[Any], item_type: str, ops: list[DatabaseOperation],
-        dup_key: Union[str, list[str]], stat: Optional[Stat]=None
-    ) -> list[Any]:
+    db: Database[RawBSONDocument],
+    item_type: str,
+    ops: list[DatabaseOperation],
+    dup_key: Union[str, list[str]],
+    stat: Optional[Stat] = None,
+) -> list[Any]:
     # normalize dup_key to list
     assert isinstance(dup_key, (str, tuple, list))
     if isinstance(dup_key, str):
         dup_key = [dup_key]
     if stat:
-        stat.inc('bulk-dup-insert-%s' % item_type, len(ops))
+        stat.inc("bulk-dup-insert-%s" % item_type, len(ops))
     slots = set()
     uniq_ops = []
     for op in ops:
         if not isinstance(op, InsertOne):
             raise Exception(
-                'Function bulk_dup_insert accepts only'
-                ' InsertOne operations. Got: %s'
-                % op.__class__.__name__
+                "Function bulk_dup_insert accepts only"
+                " InsertOne operations. Got: %s" % op.__class__.__name__
             )
         for key_item in dup_key:
-            if key_item not in op._doc: # pylint: disable=protected-access
+            if key_item not in op._doc:  # pylint: disable=protected-access
                 raise Exception(
-                    'Operation for bulk_dup_insert'
+                    "Operation for bulk_dup_insert"
                     ' does not have key "%s": %s'
-                    % (key_item, str(op._doc)[:1000]) # pylint: disable=protected-access
+                    % (
+                        key_item,
+                        str(op._doc)[:1000],  # pylint: disable=protected-access
+                    )
                 )
-        slot = tuple(op._doc[x] for x in dup_key) # pylint: disable=protected-access
+        slot = tuple(op._doc[x] for x in dup_key)  # pylint: disable=protected-access
         if slot not in slots:
             slots.add(slot)
             uniq_ops.append(op)
@@ -174,62 +195,52 @@ def bulk_dup_insert(
         db[item_type].bulk_write(uniq_ops, ordered=False)
     except BulkWriteError as ex:
         if (
-                all(x['code'] == 11000 for x in ex.details['writeErrors'])
-                and
-                not ex.details['writeConcernErrors']
-            ):
-            error_slots = set(
-                tuple(err['op'][x] for x in dup_key)
-                for err in ex.details['writeErrors']
-            )
+            all(x["code"] == 11000 for x in ex.details["writeErrors"])
+            and not ex.details["writeConcernErrors"]  # noqa: W503
+        ):
+            error_slots = {
+                tuple(err["op"][x] for x in dup_key)
+                for err in ex.details["writeErrors"]
+            }
             res_slots = list(slots - error_slots)
             if stat:
-                stat.inc(
-                    'bulk-dup-insert-%s-inserted' % item_type,
-                    len(res_slots)
-                )
+                stat.inc("bulk-dup-insert-%s-inserted" % item_type, len(res_slots))
             return res_slots
         raise
     else:
         if stat:
-            stat.inc(
-                'bulk-dup-insert-%s-inserted' % item_type,
-                len(slots)
-            )
+            stat.inc("bulk-dup-insert-%s-inserted" % item_type, len(slots))
         return list(slots)
 
 
 def bulk_simple_insert(
-        db: Database[Any], item_type: str, ops: list[DatabaseOperation],
-        stat: Optional[Stat]=None
-    ) -> None:
+    db: Database[RawBSONDocument],
+    item_type: str,
+    ops: list[DatabaseOperation],
+    stat: Optional[Stat] = None,
+) -> None:
     if stat:
-        stat.inc('bulk-dup-insert-%s' % item_type, len(ops))
+        stat.inc("bulk-dup-insert-%s" % item_type, len(ops))
     for op in ops:
         if not isinstance(op, InsertOne):
             raise Exception(
-                'Function simple_bulk_insert accepts only'
-                ' InsertOne operations. Got: %s'
-                % op.__class__.__name__
+                "Function simple_bulk_insert accepts only"
+                " InsertOne operations. Got: %s" % op.__class__.__name__
             )
     try:
         db[item_type].bulk_write(ops, ordered=False)
     except BulkWriteError as ex:
         if (
-                all(x['code'] == 11000 for x in ex.details['writeErrors'])
-                and
-                not ex.details['writeConcernErrors']
-            ):
+            all(x["code"] == 11000 for x in ex.details["writeErrors"])
+            and not ex.details["writeConcernErrors"]
+        ):
             if stat:
                 stat.inc(
-                    'bulk-dup-insert-%s-inserted' % item_type,
-                    len(ops) - len(ex.details['writeErrors'])
+                    "bulk-dup-insert-%s-inserted" % item_type,
+                    len(ops) - len(ex.details["writeErrors"]),
                 )
         else:
             raise
     else:
         if stat:
-            stat.inc(
-                'bulk-dup-insert-%s-inserted' % item_type,
-                len(ops)
-            )
+            stat.inc("bulk-dup-insert-%s-inserted" % item_type, len(ops))
