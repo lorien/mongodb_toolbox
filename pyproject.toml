@@ -1,0 +1,8 @@
+[tool.isort]
+profile = "black"
+line_length = 88
+# skip_gitignore = true # throws errors in stderr when ".git" dir does not exist
+
+[tool.bandit]
+# B101:assert_used
+skips = ["B101"]

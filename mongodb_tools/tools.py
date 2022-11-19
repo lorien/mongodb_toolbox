@@ -1,12 +1,11 @@
 import logging
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from copy import deepcopy
 from pprint import pformat, pprint  # pylint: disable=unused-import
-from typing import Any, Optional, Union, cast
+from typing import Any, Optional, Union
 
 from bson.raw_bson import RawBSONDocument
-from procstat import Stat
 from pymongo import DeleteOne, InsertOne, UpdateOne
 from pymongo.database import Database
 from pymongo.errors import BulkWriteError
@@ -15,78 +14,66 @@ from pymongo.results import BulkWriteResult
 DatabaseOperation = Union[UpdateOne, InsertOne, DeleteOne]
 
 
-__all__ = ["bulk_write", "iterate_collection", "bulk_dup_insert", "bulk_simple_insert"]
+__all__ = [
+    "bulk_write",
+    "iterate_collection",
+    "bulk_insert_dup",
+    "bulk_insert_dup_retok",
+]
+
+StatsCallback = Callable[..., None]
+LOG = logging.getLogger(__name__)
+
+
+class MongodbToolsError(Exception):
+    pass
+
+
+def dummy_stats_func(_key: str, **_kwargs: Any) -> None:
+    pass
 
 
 def bulk_write(
     db: Database[RawBSONDocument],
-    item_type: str,
+    colname: str,
     ops: list[DatabaseOperation],
-    stat: Optional[Stat] = None,
-    retries: int = 3,
-    log_first_failop: bool = True,
+    stats_callback: StatsCallback = dummy_stats_func,
 ) -> BulkWriteResult:
-    """
-    Apply `ops` Update operations to `item_type` collection with `bulk_write` method.
-
-    Gives up if `retries` retries failed.
-
-    Args:
-        db - pymongo collection object
-        item_type - name of collection
-        ops - list of operations like UpdateOne
-        stat - instance of `ioweb.stat:Stat`
-        retries - number of retries
-    """
-    if stat:
-        stat.inc("bulk-write-%s" % item_type)
-    bulk_res = None
-    for retry in range(retries):
-        try:
-            bulk_res = db[item_type].bulk_write(ops, ordered=False)
-        except BulkWriteError as ex:
-            # TODO: repeat only failed operations!!!
-            # TODO: repeat only in case of DUP (11000) errors
-            if retry == (retries - 1):
-                if log_first_failop:
-                    logging.error(
-                        "First failed operation:\n%s",
-                        pformat(ex.details["writeErrors"][0]),
-                    )
-                raise
-            if stat:
-                stat.inc("bulk-write-%s-retry" % item_type)
-        else:
-            if stat:
-                stat.inc(
-                    "bulk-write-%s-upsert" % item_type,
-                    bulk_res.bulk_api_result["nUpserted"],
-                )
-                stat.inc(
-                    "bulk-write-%s-change" % item_type,
-                    bulk_res.bulk_api_result["nModified"],
-                )
-    return cast(BulkWriteResult, bulk_res)
+    """Execute data operations using mongodb bulk interface."""
+    stats_callback("bulk-write-%s-ops" % colname, len(ops))
+    bulk_res = db[colname].bulk_write(ops, ordered=False)
+    for stats_key, result_key in [
+        ("inserted", "nInserted"),
+        ("upserted", "nUpserted"),
+        ("modified", "nModified"),
+    ]:
+        stats_callback(
+            "{}-{}".format(colname, stats_key),
+            bulk_res.bulk_api_result[result_key],
+        )
+    return bulk_res
 
 
 class BulkWriter:
     def __init__(
         self,
         db: Database[RawBSONDocument],
-        item_type: str,
+        colname: str,
         bulk_size: int = 100,
-        stat: Optional[Stat] = None,
+        stats_callback: StatsCallback = dummy_stats_func,
         retries: int = 3,
     ) -> None:
         self.db = db
-        self.item_type = item_type
-        self.stat = stat
+        self.colname = colname
+        self.stats_callback = stats_callback
         self.retries = retries
         self.bulk_size = bulk_size
         self.ops: list[DatabaseOperation] = []
 
     def _write_ops(self) -> BulkWriteResult:
-        res = bulk_write(self.db, self.item_type, self.ops, self.stat)
+        res = bulk_write(
+            self.db, self.colname, self.ops, stats_callback=self.stats_callback
+        )
         self.ops = []
         return res  # noqa: R504
 
@@ -108,77 +95,78 @@ class BulkWriter:
         return None
 
 
-def iterate_collection(
+def iterate_collection(  # noqa: CCR001 pylint: disable=too-many-arguments
     db: Database[RawBSONDocument],
-    item_type: str,
+    colname: str,
     query: dict[str, Any],
     sort_field: str,
-    iter_chunk: int = 1000,
+    chunk_len: int = 1000,
     fields: Optional[dict[str, int]] = None,
     infinite: bool = False,
     limit: Optional[int] = None,
     recent_id: Optional[int] = None,
+    no_items_sleep_time: int = 5,
 ) -> Iterable[Any]:
     """
-    Iterate items in a collection, extracting them by chunks.
+    Iterate items in a collection.
 
-    Intenally, it fetches chunk of `iter_chunk` items at once and
-    iterates over it. Then fetch next chunk.
+    The function fetches chunk of items at once, iterates over it, then gets next chunk.
     """
-    count = 0
-    query = deepcopy(query)  # avoid side effects
+    num_items = 0
+    query = deepcopy(query)  # avoid possible side effects
     if sort_field in query:
-        raise Exception(
-            "Function `iterate_collection` received query"
-            " that contains a key same as `sort_field`."
+        # During the iteration the function "iterate_collection"
+        # uses values of "sort_field" as offset for new chunk of items
+        raise MongodbToolsError(
+            'Search query can not contain field from "sort_field" argument'
         )
     while True:
         if recent_id:
             query[sort_field] = {"$gt": recent_id}
         items = list(
-            db[item_type].find(query, fields, sort=[(sort_field, 1)], limit=iter_chunk)
+            db[colname].find(query, fields, sort=[(sort_field, 1)], limit=chunk_len)
         )
-        if not items:
-            if infinite:
-                sleep_time = 5
-                logging.debug("No items to process. Sleeping %d seconds", sleep_time)
-                time.sleep(sleep_time)
-                recent_id = None
-            else:
+        for item in items:
+            yield item
+            recent_id = item[sort_field]
+            num_items += 1
+            if limit and num_items >= limit:
                 return
-        else:
-            for item in items:
-                yield item
-                recent_id = item[sort_field]
-                count += 1
-                if limit and count >= limit:
-                    return
+        if not items:
+            if not infinite:
+                return
+            LOG.debug("No items to process. Sleeping %d seconds", no_items_sleep_time)
+            time.sleep(no_items_sleep_time)
 
 
-def bulk_dup_insert(
+def only_dup_key_errors(err: BulkWriteError) -> bool:
+    return (
+        all(x["code"] == 11000 for x in err.details["writeErrors"])
+        and not err.details["writeConcernErrors"]
+    )
+
+
+def bulk_insert_dup_retok(  # noqa: CCR001
     db: Database[RawBSONDocument],
-    item_type: str,
-    ops: list[DatabaseOperation],
+    colname: str,
+    ops: list[InsertOne[Any]],
     dup_key: Union[str, list[str]],
-    stat: Optional[Stat] = None,
+    stats_callback: StatsCallback = dummy_stats_func,
 ) -> list[Any]:
-    # normalize dup_key to list
-    assert isinstance(dup_key, (str, tuple, list))
+    stats_callback("bulk-insert-dup-retok-%s-ops" % colname, len(ops))
     if isinstance(dup_key, str):
         dup_key = [dup_key]
-    if stat:
-        stat.inc("bulk-dup-insert-%s" % item_type, len(ops))
     slots = set()
-    uniq_ops = []
+    uniq_ops: list[InsertOne[Any]] = []
     for op in ops:
         if not isinstance(op, InsertOne):
-            raise Exception(
-                "Function bulk_dup_insert accepts only"
-                " InsertOne operations. Got: %s" % op.__class__.__name__
+            raise MongodbToolsError(
+                "Function bulk_insert_dup_retok accepts only"
+                " InsertOne operations. Got: {}".format(op.__class__.__name__)
             )
         for key_item in dup_key:
             if key_item not in op._doc:  # pylint: disable=protected-access
-                raise Exception(
+                raise MongodbToolsError(
                     "Operation for bulk_dup_insert"
                     ' does not have key "%s": %s'
                     % (
@@ -190,57 +178,44 @@ def bulk_dup_insert(
         if slot not in slots:
             slots.add(slot)
             uniq_ops.append(op)
-
     try:
-        db[item_type].bulk_write(uniq_ops, ordered=False)
+        db[colname].bulk_write(uniq_ops, ordered=False)
     except BulkWriteError as ex:
-        if (
-            all(x["code"] == 11000 for x in ex.details["writeErrors"])
-            and not ex.details["writeConcernErrors"]  # noqa: W503
-        ):
-            error_slots = {
-                tuple(err["op"][x] for x in dup_key)
-                for err in ex.details["writeErrors"]
-            }
-            res_slots = list(slots - error_slots)
-            if stat:
-                stat.inc("bulk-dup-insert-%s-inserted" % item_type, len(res_slots))
-            return res_slots
-        raise
+        if not only_dup_key_errors(ex):
+            raise
+        error_slots = {
+            tuple(err["op"][x] for x in dup_key) for err in ex.details["writeErrors"]
+        }
+        ret_slots = list(slots - error_slots)
+        stats_callback("%s-inserted" % colname, len(ret_slots))
+        return ret_slots
     else:
-        if stat:
-            stat.inc("bulk-dup-insert-%s-inserted" % item_type, len(slots))
+        stats_callback("%s-inserted" % colname, len(slots))
         return list(slots)
 
 
-def bulk_simple_insert(
+def bulk_insert_dup(
     db: Database[RawBSONDocument],
-    item_type: str,
-    ops: list[DatabaseOperation],
-    stat: Optional[Stat] = None,
+    colname: str,
+    ops: list[InsertOne[Any]],
+    stats_callback: StatsCallback = dummy_stats_func,
 ) -> None:
-    if stat:
-        stat.inc("bulk-dup-insert-%s" % item_type, len(ops))
+    """Write multiple insert operations ignoring all duplicate key errors."""
+    stats_callback("bulk-insert-dup-%s-ops" % colname, len(ops))
     for op in ops:
         if not isinstance(op, InsertOne):
-            raise Exception(
+            raise MongodbToolsError(
                 "Function simple_bulk_insert accepts only"
                 " InsertOne operations. Got: %s" % op.__class__.__name__
             )
     try:
-        db[item_type].bulk_write(ops, ordered=False)
+        db[colname].bulk_write(ops, ordered=False)
     except BulkWriteError as ex:
-        if (
-            all(x["code"] == 11000 for x in ex.details["writeErrors"])
-            and not ex.details["writeConcernErrors"]
-        ):
-            if stat:
-                stat.inc(
-                    "bulk-dup-insert-%s-inserted" % item_type,
-                    len(ops) - len(ex.details["writeErrors"]),
-                )
-        else:
+        if not only_dup_key_errors(ex):
             raise
+        stats_callback(
+            "%s-inserted" % colname,
+            len(ops) - len(ex.details["writeErrors"]),
+        )
     else:
-        if stat:
-            stat.inc("bulk-dup-insert-%s-inserted" % item_type, len(ops))
+        stats_callback("%s-inserted" % colname, len(ops))

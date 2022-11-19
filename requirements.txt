@@ -23,6 +23,7 @@ flake8-quotes
 flake8-return
 flake8-simplify
 flake8-string-format
+flake8-cognitive-complexity
 mccabe
 mypy
 pep8-naming

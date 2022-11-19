@@ -28,7 +28,7 @@ pylint:
 	pylint -j0 $(FILES_FOR_CHECK)
 
 flake8:
-	flake8 -j auto $(FILES_FOR_CHECK)
+	flake8 -j auto --max-cognitive-complexity=8 $(FILES_FOR_CHECK)
 
 bandit:
 	bandit -qc pyproject.toml -r $(FILES_FOR_CHECK)

@@ -8,7 +8,7 @@ with open("README.md", encoding="utf-8") as inp:
     readme_content = inp.read()
 
 setup(
-    name="ioweb",
+    name="mongodb_tools",
     version="0.0.1",
     author="Gregory Petukhov",
     author_email="lorien@lorien.name",
