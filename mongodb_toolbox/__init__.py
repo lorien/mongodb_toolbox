@@ -1,4 +1,5 @@
 from .toolbox import (
+    BulkWriter,
     MongodbToolboxError,
     bulk_insert_dup,
     bulk_insert_dup_retok,

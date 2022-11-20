@@ -1,6 +1,7 @@
-# Package
+# Build Dependencies
 bumpversion
 procstat
+sphinx
 
 # Types Stubs
 types-setuptools

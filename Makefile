@@ -1,4 +1,4 @@
-.PHONY: bootstrap venv deps clean init runscript mypy pytype pylint flake8 bandit release
+.PHONY: bootstrap venv deps clean init runscript mypy pytype pylint flake8 bandit release docs
 
 FILES_FOR_CHECK = mongodb_toolbox setup.py
 
@@ -37,3 +37,6 @@ check: mypy pylint flake8 pytype bandit
 
 release:
 	git push; git push --tags; rm dist/*; python3 setup.py clean sdist; twine upload --verbose dist/*
+
+docs:
+	sphinx-build -b html docs docs/_build

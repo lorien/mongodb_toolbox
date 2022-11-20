@@ -11,19 +11,18 @@ from pymongo.database import Database
 from pymongo.errors import BulkWriteError
 from pymongo.results import BulkWriteResult
 
-DatabaseOperation = Union[UpdateOne, InsertOne, DeleteOne]
-
-
 __all__ = [
     "bulk_write",
     "iterate_collection",
     "bulk_insert_dup",
     "bulk_insert_dup_retok",
     "MongodbToolboxError",
+    "BulkWriter",
 ]
 
 StatsCallback = Callable[..., None]
 LOG = logging.getLogger(__name__)
+DatabaseOperation = Union[UpdateOne, InsertOne, DeleteOne]
 
 
 class MongodbToolboxError(Exception):
@@ -40,7 +39,14 @@ def bulk_write(
     ops: list[DatabaseOperation],
     stats_callback: StatsCallback = dummy_stats_func,
 ) -> BulkWriteResult:
-    """Execute data operations using mongodb bulk interface."""
+    """
+    Apply multiple data operations to the collection using mongodb bulk interface.
+
+    :param db: database object
+    :param colname: name of collection to write items into
+    :param ops: list of mongodb operations
+    :param stats_callback: callback to track statistics
+    """
     stats_callback("bulk-write-%s-ops" % colname, len(ops))
     bulk_res = db[colname].bulk_write(ops, ordered=False)
     for stats_key, result_key in [
@@ -56,18 +62,27 @@ def bulk_write(
 
 
 class BulkWriter:
+    """
+    Class to collect mongodb operations and execute them with bulk interface
+    when number of pending operations reaches threshold.
+    """
+
     def __init__(
         self,
         db: Database[RawBSONDocument],
         colname: str,
         bulk_size: int = 100,
         stats_callback: StatsCallback = dummy_stats_func,
-        retries: int = 3,
     ) -> None:
+        """
+        :param db: database object
+        :param colname: name of collection to apply operations to
+        :param bulk_size: number of operations to store before run them with bulk interface
+        :param stats_callback: callback to track statistics
+        """
         self.db = db
         self.colname = colname
         self.stats_callback = stats_callback
-        self.retries = retries
         self.bulk_size = bulk_size
         self.ops: list[DatabaseOperation] = []
 
@@ -79,18 +94,35 @@ class BulkWriter:
         return res  # noqa: R504
 
     def update_one(self, *args: Any, **kwargs: Any) -> Optional[BulkWriteResult]:
+        """Add new UpdateOne operation to list of pending operations
+
+        :param \*args: goes directly to UpdateOne constructor
+        :param \**kwargs: goes directly to UpdateOne constructor
+
+        If number of operations reaches threshold then execute all operations
+        with mongodb bulk interface.
+        """
         self.ops.append(UpdateOne(*args, **kwargs))
         if len(self.ops) >= self.bulk_size:
             return self._write_ops()
         return None
 
     def insert_one(self, *args: Any, **kwargs: Any) -> Optional[BulkWriteResult]:
+        """Add new InsertOne operation to list of pending operations
+
+        :param \*args: goes directly to UpdateOne constructor
+        :param \**kwargs: goes directly to UpdateOne constructor
+
+        If number of operations reaches threshold then execute all operations
+        with mongodb bulk interface.
+        """
         self.ops.append(InsertOne(*args, **kwargs))
         if len(self.ops) >= self.bulk_size:
             return self._write_ops()
         return None
 
     def flush(self) -> Optional[BulkWriteResult]:
+        """Run all pending operations"""
         if self.ops:
             return self._write_ops()
         return None
