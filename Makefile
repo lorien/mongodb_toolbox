@@ -36,4 +36,4 @@ bandit:
 check: mypy pylint flake8 pytype bandit
 
 release:
-	git push --tags; rm dist/*; python3 setup.py clean sdist; twine upload --verbose dist/*
+	git push; git push --tags; rm dist/*; python3 setup.py clean sdist; twine upload --verbose dist/*
