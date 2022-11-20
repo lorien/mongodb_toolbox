@@ -8,18 +8,18 @@ with open("README.md", encoding="utf-8") as inp:
     readme_content = inp.read()
 
 setup(
-    name="mongodb_tools",
+    name="mongodb_toolbox",
     version="0.0.1",
     author="Gregory Petukhov",
     author_email="lorien@lorien.name",
     maintainer="Gregory Petukhov",
     maintainer_email="lorien@lorien.name",
-    url="https://github.com/lorien/mongodb_tools",
-    description="Tools to simplify common mongodb read/write usage patterns",
+    url="https://github.com/lorien/mongodb_toolbox",
+    description="Tools to simplify common mongodb data read/write cases",
     long_description=readme_content,
     long_description_content_type="text/markdown",
-    packages=find_packages(exclude=["test", "crawlers"]),
-    download_url="https://github.com/lorien/mongodb_tools/releases",
+    packages=find_packages(),
+    download_url="https://github.com/lorien/mongodb_toolbox/releases",
     license="MIT",
     install_requires=[
         "pymongo",

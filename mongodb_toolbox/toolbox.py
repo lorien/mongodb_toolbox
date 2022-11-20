@@ -19,13 +19,14 @@ __all__ = [
     "iterate_collection",
     "bulk_insert_dup",
     "bulk_insert_dup_retok",
+    "MongodbToolboxError",
 ]
 
 StatsCallback = Callable[..., None]
 LOG = logging.getLogger(__name__)
 
 
-class MongodbToolsError(Exception):
+class MongodbToolboxError(Exception):
     pass
 
 
@@ -117,7 +118,7 @@ def iterate_collection(  # noqa: CCR001 pylint: disable=too-many-arguments
     if sort_field in query:
         # During the iteration the function "iterate_collection"
         # uses values of "sort_field" as offset for new chunk of items
-        raise MongodbToolsError(
+        raise MongodbToolboxError(
             'Search query can not contain field from "sort_field" argument'
         )
     while True:
@@ -160,13 +161,13 @@ def bulk_insert_dup_retok(  # noqa: CCR001
     uniq_ops: list[InsertOne[Any]] = []
     for op in ops:
         if not isinstance(op, InsertOne):
-            raise MongodbToolsError(
+            raise MongodbToolboxError(
                 "Function bulk_insert_dup_retok accepts only"
                 " InsertOne operations. Got: {}".format(op.__class__.__name__)
             )
         for key_item in dup_key:
             if key_item not in op._doc:  # pylint: disable=protected-access
-                raise MongodbToolsError(
+                raise MongodbToolboxError(
                     "Operation for bulk_dup_insert"
                     ' does not have key "%s": %s'
                     % (
@@ -204,7 +205,7 @@ def bulk_insert_dup(
     stats_callback("bulk-insert-dup-%s-ops" % colname, len(ops))
     for op in ops:
         if not isinstance(op, InsertOne):
-            raise MongodbToolsError(
+            raise MongodbToolboxError(
                 "Function simple_bulk_insert accepts only"
                 " InsertOne operations. Got: %s" % op.__class__.__name__
             )

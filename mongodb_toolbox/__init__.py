@@ -1,4 +1,5 @@
-from .tools import (
+from .toolbox import (
+    MongodbToolboxError,
     bulk_insert_dup,
     bulk_insert_dup_retok,
     bulk_write,
