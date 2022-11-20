@@ -15,7 +15,7 @@ setup(
     maintainer="Gregory Petukhov",
     maintainer_email="lorien@lorien.name",
     url="https://github.com/lorien/mongodb_toolbox",
-    description="Tools to simplify common mongodb data read/write cases",
+    description="Tools to automate mongodb read/write operations.",
     long_description=readme_content,
     long_description_content_type="text/markdown",
     packages=find_packages(),
