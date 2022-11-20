@@ -9,7 +9,7 @@ with open("README.md", encoding="utf-8") as inp:
 
 setup(
     name="mongodb_toolbox",
-    version="0.0.1",
+    version="0.0.2",
     author="Gregory Petukhov",
     author_email="lorien@lorien.name",
     maintainer="Gregory Petukhov",
