@@ -55,7 +55,7 @@ def bulk_write(
         ("modified", "nModified"),
     ]:
         stats_callback(
-            "{}-{}".format(colname, stats_key),
+            "bulk-write-{}-{}".format(colname, stats_key),
             bulk_res.bulk_api_result[result_key],
         )
     return bulk_res
@@ -63,8 +63,10 @@ def bulk_write(
 
 class BulkWriter:
     """
-    Class to collect mongodb operations and execute them with bulk interface
-    when number of pending operations reaches threshold.
+    Class to collect mongodb operations and execute them with bulk interface.
+
+    Actual bulk write happens when number of pending operations reaches
+    defined threshold.
     """
 
     def __init__(
@@ -75,9 +77,12 @@ class BulkWriter:
         stats_callback: StatsCallback = dummy_stats_func,
     ) -> None:
         """
+        Build BulkWriter instance.
+
         :param db: database object
         :param colname: name of collection to apply operations to
-        :param bulk_size: number of operations to store before run them with bulk interface
+        :param bulk_size: number of operations to store before run them with
+            bulk interface
         :param stats_callback: callback to track statistics
         """
         self.db = db
@@ -94,7 +99,7 @@ class BulkWriter:
         return res  # noqa: R504
 
     def update_one(self, *args: Any, **kwargs: Any) -> Optional[BulkWriteResult]:
-        """Add new UpdateOne operation to list of pending operations
+        r"""Add new UpdateOne operation to list of pending operations.
 
         :param \*args: goes directly to UpdateOne constructor
         :param \**kwargs: goes directly to UpdateOne constructor
@@ -108,7 +113,7 @@ class BulkWriter:
         return None
 
     def insert_one(self, *args: Any, **kwargs: Any) -> Optional[BulkWriteResult]:
-        """Add new InsertOne operation to list of pending operations
+        r"""Add new InsertOne operation to list of pending operations.
 
         :param \*args: goes directly to UpdateOne constructor
         :param \**kwargs: goes directly to UpdateOne constructor
@@ -122,7 +127,7 @@ class BulkWriter:
         return None
 
     def flush(self) -> Optional[BulkWriteResult]:
-        """Run all pending operations"""
+        """Run all pending operations."""
         if self.ops:
             return self._write_ops()
         return None
@@ -220,10 +225,10 @@ def bulk_insert_dup_retok(  # noqa: CCR001
             tuple(err["op"][x] for x in dup_key) for err in ex.details["writeErrors"]
         }
         ret_slots = list(slots - error_slots)
-        stats_callback("%s-inserted" % colname, len(ret_slots))
+        stats_callback("bulk-write-%s-inserted" % colname, len(ret_slots))
         return ret_slots
     else:
-        stats_callback("%s-inserted" % colname, len(slots))
+        stats_callback("bulk-write-%s-inserted" % colname, len(slots))
         return list(slots)
 
 
@@ -247,8 +252,8 @@ def bulk_insert_dup(
         if not only_dup_key_errors(ex):
             raise
         stats_callback(
-            "%s-inserted" % colname,
+            "bulk-write-%s-inserted" % colname,
             len(ops) - len(ex.details["writeErrors"]),
         )
     else:
-        stats_callback("%s-inserted" % colname, len(ops))
+        stats_callback("bulk-write-%s-inserted" % colname, len(ops))

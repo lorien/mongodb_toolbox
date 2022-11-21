@@ -2,6 +2,8 @@
 bumpversion
 procstat
 sphinx
+pymongo
+pytest
 
 # Types Stubs
 types-setuptools

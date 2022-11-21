@@ -1,6 +1,7 @@
 .PHONY: bootstrap venv deps clean init runscript mypy pytype pylint flake8 bandit release docs
 
-FILES_FOR_CHECK = mongodb_toolbox setup.py
+FILES_CHECK_MYPY = mongodb_toolbox setup.py
+FILES_CHECK_ALL = $(FILES_CHECK_MYPY) tests
 
 bootstrap: venv deps dirs
 
@@ -9,6 +10,7 @@ venv:
 
 deps:
 	.env/bin/pip install -r requirements.txt
+	.env/bin/pip install -e .
 
 clean:
 	find -name '*.pyc' -delete
@@ -19,19 +21,19 @@ dirs:
 	if [ ! -e var ]; then mkdir -p var; fi
 
 mypy:
-	mypy --strict $(FILES_FOR_CHECK)
+	mypy --strict $(FILES_CHECK_MYPY)
 
 pytype:
-	pytype -j auto $(FILES_FOR_CHECK)
+	pytype -j auto $(FILES_CHECK_ALL)
 
 pylint:
-	pylint -j0 $(FILES_FOR_CHECK)
+	pylint -j0 $(FILES_CHECK_ALL)
 
 flake8:
-	flake8 -j auto --max-cognitive-complexity=8 $(FILES_FOR_CHECK)
+	flake8 -j auto --max-cognitive-complexity=8 $(FILES_CHECK_ALL)
 
 bandit:
-	bandit -qc pyproject.toml -r $(FILES_FOR_CHECK)
+	bandit -qc pyproject.toml -r $(FILES_CHECK_ALL)
 
 check: mypy pylint flake8 pytype bandit
 
@@ -40,3 +42,6 @@ release:
 
 docs:
 	sphinx-build -b html docs docs/_build
+
+test:
+	pytest
