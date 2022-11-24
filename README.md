@@ -15,4 +15,4 @@ Misc functions:
 
 ## Documentation
 
-Docs are here [mongodb-toolbox.readthedocs.io/en/latest/](https://mongodb-toolbox.readthedocs.io/en/latest/)
+Docs are here https://mongodb-toolbox.readthedocs.io/en/latest/
