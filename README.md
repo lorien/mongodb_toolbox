@@ -12,3 +12,7 @@ Bulk Write Helpers:
 Misc functions:
 
 * iterate\_collection() -- function to iterate items in collecting by loading them by chunks
+
+## Documentation
+
+Docs are here [mongodb-toolbox.readthedocs.io/en/latest/](https://mongodb-toolbox.readthedocs.io/en/latest/)
