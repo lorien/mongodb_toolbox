@@ -29,15 +29,11 @@ class MongodbToolboxError(Exception):
     pass
 
 
-def dummy_stats_func(_key: str, **_kwargs: Any) -> None:
-    pass
-
-
 def bulk_write(
     db: Database[RawBSONDocument],
     colname: str,
     ops: list[DatabaseOperation],
-    stats_callback: StatsCallback = dummy_stats_func,
+    stats_callback: Optional[StatsCallback] = None,
 ) -> BulkWriteResult:
     """
     Apply multiple data operations to the collection using mongodb bulk interface.
@@ -47,17 +43,19 @@ def bulk_write(
     :param ops: list of mongodb operations
     :param stats_callback: callback to track statistics
     """
-    stats_callback("bulk-write-%s-ops" % colname, len(ops))
+    if stats_callback:
+        stats_callback("bulk-write-%s-ops" % colname, len(ops))
     bulk_res = db[colname].bulk_write(ops, ordered=False)
     for stats_key, result_key in [
         ("inserted", "nInserted"),
         ("upserted", "nUpserted"),
         ("modified", "nModified"),
     ]:
-        stats_callback(
-            "bulk-write-{}-{}".format(colname, stats_key),
-            bulk_res.bulk_api_result[result_key],
-        )
+        if stats_callback:
+            stats_callback(
+                "bulk-write-{}-{}".format(colname, stats_key),
+                bulk_res.bulk_api_result[result_key],
+            )
     return bulk_res
 
 
@@ -74,7 +72,7 @@ class BulkWriter:
         db: Database[RawBSONDocument],
         colname: str,
         bulk_size: int = 100,
-        stats_callback: StatsCallback = dummy_stats_func,
+        stats_callback: Optional[StatsCallback] = None,
     ) -> None:
         """
         Build BulkWriter instance.
@@ -184,14 +182,15 @@ def only_dup_key_errors(err: BulkWriteError) -> bool:
     )
 
 
-def bulk_insert_dup_retok(  # noqa: CCR001
+def bulk_insert_dup_retok(  # noqa: CCR001, C901
     db: Database[RawBSONDocument],
     colname: str,
     ops: list[InsertOne[Any]],
     dup_key: Union[str, list[str]],
-    stats_callback: StatsCallback = dummy_stats_func,
+    stats_callback: Optional[StatsCallback] = None,
 ) -> list[Any]:
-    stats_callback("bulk-insert-dup-retok-%s-ops" % colname, len(ops))
+    if stats_callback:
+        stats_callback("bulk-insert-dup-retok-%s-ops" % colname, len(ops))
     if isinstance(dup_key, str):
         dup_key = [dup_key]
     slots = set()
@@ -225,21 +224,24 @@ def bulk_insert_dup_retok(  # noqa: CCR001
             tuple(err["op"][x] for x in dup_key) for err in ex.details["writeErrors"]
         }
         ret_slots = list(slots - error_slots)
-        stats_callback("bulk-write-%s-inserted" % colname, len(ret_slots))
+        if stats_callback:
+            stats_callback("bulk-write-%s-inserted" % colname, len(ret_slots))
         return ret_slots
     else:
-        stats_callback("bulk-write-%s-inserted" % colname, len(slots))
+        if stats_callback:
+            stats_callback("bulk-write-%s-inserted" % colname, len(slots))
         return list(slots)
 
 
-def bulk_insert_dup(
+def bulk_insert_dup(  # noqa: CCR001
     db: Database[RawBSONDocument],
     colname: str,
     ops: list[InsertOne[Any]],
-    stats_callback: StatsCallback = dummy_stats_func,
+    stats_callback: Optional[StatsCallback] = None,
 ) -> None:
     """Write multiple insert operations ignoring all duplicate key errors."""
-    stats_callback("bulk-insert-dup-%s-ops" % colname, len(ops))
+    if stats_callback:
+        stats_callback("bulk-insert-dup-%s-ops" % colname, len(ops))
     for op in ops:
         if not isinstance(op, InsertOne):
             raise MongodbToolboxError(
@@ -251,9 +253,11 @@ def bulk_insert_dup(
     except BulkWriteError as ex:
         if not only_dup_key_errors(ex):
             raise
-        stats_callback(
-            "bulk-write-%s-inserted" % colname,
-            len(ops) - len(ex.details["writeErrors"]),
-        )
+        if stats_callback:
+            stats_callback(
+                "bulk-write-%s-inserted" % colname,
+                len(ops) - len(ex.details["writeErrors"]),
+            )
     else:
-        stats_callback("bulk-write-%s-inserted" % colname, len(ops))
+        if stats_callback:
+            stats_callback("bulk-write-%s-inserted" % colname, len(ops))
