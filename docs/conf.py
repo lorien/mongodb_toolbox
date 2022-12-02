@@ -14,7 +14,7 @@ sys.path.insert(0, PROJECT_ROOT)
 project = "mongodb_toolbox"
 copyright = "2022, lorien"
 author = "lorien"
-release = "0.0.3"
+release = "0.0.4"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
