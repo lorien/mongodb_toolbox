@@ -19,6 +19,9 @@ setup(
     long_description=readme_content,
     long_description_content_type="text/markdown",
     packages=find_packages(),
+    package_data={
+        "mongodb_toolbox": ["py.typed"],
+    },
     download_url="https://github.com/lorien/mongodb_toolbox/releases",
     license="MIT",
     install_requires=[
