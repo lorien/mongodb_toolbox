@@ -227,10 +227,9 @@ def bulk_insert_dup_retok(  # noqa: CCR001, C901
         if stats_callback:
             stats_callback("bulk-write-%s-inserted" % colname, len(ret_slots))
         return ret_slots
-    else:
-        if stats_callback:
-            stats_callback("bulk-write-%s-inserted" % colname, len(slots))
-        return list(slots)
+    if stats_callback:
+        stats_callback("bulk-write-%s-inserted" % colname, len(slots))
+    return list(slots)
 
 
 def bulk_insert_dup(  # noqa: CCR001
