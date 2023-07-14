@@ -1,4 +1,4 @@
-.PHONY: bootstrap venv deps clean init runscript mypy pytype pylint flake8 bandit release docs
+.PHONY: bootstrap venv deps clean init runscript mypy pylint flake8 bandit release docs
 
 FILES_CHECK_MYPY = mongodb_toolbox setup.py
 FILES_CHECK_ALL = $(FILES_CHECK_MYPY) tests
@@ -23,9 +23,6 @@ dirs:
 mypy:
 	mypy --strict $(FILES_CHECK_MYPY)
 
-pytype:
-	pytype -j auto $(FILES_CHECK_ALL)
-
 pylint:
 	pylint -j0 $(FILES_CHECK_ALL)
 
@@ -35,7 +32,7 @@ flake8:
 bandit:
 	bandit -qc pyproject.toml -r $(FILES_CHECK_ALL)
 
-check: mypy pylint flake8 pytype bandit
+check: mypy pylint flake8 bandit
 
 release:
 	git push; git push --tags; rm dist/*; python3 setup.py clean sdist; twine upload --verbose dist/*
